@@ -9,6 +9,7 @@ Score fusion (from notebook 4):
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,12 +24,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SearchResult:
+    rank: int
     filename: str
     score: float
     visual_score: float
     ocr_score: float
     ocr_text: str
     image_path: Path
+
+
+@dataclass
+class SearchTiming:
+    query_ms: float
+    scoring_ms: float
+    total_ms: float
 
 
 class StickerSearcher:
@@ -53,6 +62,11 @@ class StickerSearcher:
             cfg.embeddings_dir / "ocr_confidences.pt", weights_only=True
         ).to(self.device)
 
+        # Keep exact search, but make scoring a single matrix-vector operation.
+        # OCR embeddings can contain zero rows, and F.normalize preserves them.
+        self.image_embeddings = F.normalize(self.image_embeddings, dim=-1)
+        self.ocr_embeddings = F.normalize(self.ocr_embeddings, dim=-1)
+
         # Load OCR metadata for display
         ocr_meta_path = cfg.embeddings_dir / "ocr_metadata.json"
         self.ocr_metadata = {}
@@ -72,12 +86,36 @@ class StickerSearcher:
 
         final_score = z(image_score) + alpha * confidence² * z(ocr_score)
         """
-        top_k = top_k or self.cfg.top_k
-
         q_emb = self.embedder.embed_query(query).to(self.device)
+        return self.search_by_embedding(q_emb, top_k=top_k)
 
-        image_scores = F.cosine_similarity(q_emb, self.image_embeddings)
-        ocr_scores = F.cosine_similarity(q_emb, self.ocr_embeddings)
+    @torch.no_grad()
+    def search_with_timing(
+        self, query: str, top_k: int | None = None
+    ) -> tuple[list[SearchResult], SearchTiming]:
+        """Search and return coarse latency measurements for reporting/demo."""
+        start = time.perf_counter()
+        q_start = time.perf_counter()
+        q_emb = self.embedder.embed_query(query).to(self.device)
+        q_end = time.perf_counter()
+        results = self.search_by_embedding(q_emb, top_k=top_k)
+        end = time.perf_counter()
+        return results, SearchTiming(
+            query_ms=(q_end - q_start) * 1000,
+            scoring_ms=(end - q_end) * 1000,
+            total_ms=(end - start) * 1000,
+        )
+
+    @torch.no_grad()
+    def search_by_embedding(
+        self, q_emb: torch.Tensor, top_k: int | None = None
+    ) -> list[SearchResult]:
+        """Search using an already computed query embedding."""
+        top_k = min(top_k or self.cfg.top_k, len(self.filenames))
+        q = F.normalize(q_emb.to(self.device), dim=-1).squeeze(0)
+
+        image_scores = self.image_embeddings @ q
+        ocr_scores = self.ocr_embeddings @ q
 
         # Z-score normalization
         image_scores = (image_scores - image_scores.mean()) / (
@@ -93,13 +131,14 @@ class StickerSearcher:
         top_indices = scores.topk(top_k).indices
 
         results = []
-        for idx in top_indices:
+        for rank, idx in enumerate(top_indices, 1):
             i = idx.item()
             fname = self.filenames[i]
             ocr_text = self.ocr_metadata.get(fname, {}).get("text", "")
 
             results.append(
                 SearchResult(
+                    rank=rank,
                     filename=fname,
                     score=scores[i].item(),
                     visual_score=image_scores[i].item(),
