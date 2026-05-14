@@ -1,0 +1,5 @@
+{"query_id":"q_visual_cat","query":"cat waving","category":"visual"}
+{"query_id":"q_ocr_hello","query":"hello sticker","category":"ocr"}
+{"query_id":"q_ocr_morning","query":"good morning","category":"ocr"}
+{"query_id":"q_mixed_programming","query":"programming ai sticker","category":"mixed"}
+{"query_id":"q_hard_spiderman","query":"spiderman kissing a cat","category":"fallback"}
