@@ -6,6 +6,7 @@ Usage:
     python main.py index          # CLIP + OCR embeddings
     python main.py search         # interactive search
     python main.py generate       # create a new sticker
+    python main.py build-eval     # build OCR evaluation set
     python main.py evaluate       # retrieval quality metrics
     python main.py migrate        # convert existing .npy → .pt
 """
@@ -29,6 +30,8 @@ def main():
         from cli.search import main as run
     elif cmd == "generate":
         from cli.generate import main as run
+    elif cmd == "build-eval":
+        from cli.build_eval import main as run
     elif cmd == "evaluate":
         from cli.evaluate import main as run
     elif cmd == "migrate":

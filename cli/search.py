@@ -60,6 +60,12 @@ def main():
         help="Run repeated searches and print latency percentiles",
     )
     parser.add_argument("--benchmark-runs", type=int, default=20)
+    parser.add_argument(
+        "--ocr-alpha",
+        type=float,
+        default=0.01,
+        help="Weight of OCR score in late fusion; use 0.0 for image-only baseline",
+    )
     args = parser.parse_args()
 
     generation_device = resolve_generation_device(args.generation_device)
@@ -67,6 +73,7 @@ def main():
         clip_device=args.device,
         top_k=args.top_k,
         generation_min_score=args.min_score,
+        ocr_alpha=args.ocr_alpha,
         generation_device=generation_device,
         generation_local_files_only=not args.allow_model_download,
         sam_device=args.sam_device,
